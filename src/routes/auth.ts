@@ -4,13 +4,14 @@ import jwt from 'jsonwebtoken';
 import db from '../db';
 import { JWT_SECRET, BCRYPT_SALT_ROUNDS } from '../config';
 import { User } from '../types';
+import { authLimiter } from '../middleware/rateLimit';
 
 const router = express.Router();
 
 // User registration
-router.post('/register', async (req, res) => {
+router.post('/register', authLimiter, async (req, res) => {
   try {
-    const { phone, email, password } = req.body;
+    const { phone, password, email, username, is_admin } = req.body;
     
     // Validate input
     if (!(phone || email)) {
@@ -34,11 +35,11 @@ router.post('/register', async (req, res) => {
 
     // Create user
     const result = db
-      .prepare('INSERT INTO users (phone, email, password_hash) VALUES (?, ?, ?)')
-      .run(phone, email, hashedPassword);
+      .prepare('INSERT INTO users (phone, email, password_hash, username, is_admin) VALUES (?, ?, ?, ?, ?)')
+      .run(phone, email, hashedPassword, username, Number(is_admin));
 
     const newUser = db
-      .prepare('SELECT id, phone, email, created_at FROM users WHERE id = ?')
+      .prepare('SELECT id, phone, email, username, created_at, is_admin FROM users WHERE id = ?')
       .get(result.lastInsertRowid) as User;
 
     // Generate JWT
@@ -54,9 +55,9 @@ router.post('/register', async (req, res) => {
 });
 
 // User login
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
-    const { identifier, password } = req.body;
+    const { identifier, password, rememberMe } = req.body;
     
     if (!identifier || !password) {
       return res.status(400).json({ error: 'Identifier and password are required' });
@@ -79,8 +80,14 @@ router.post('/login', async (req, res) => {
 
     // Generate JWT
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, {
-      expiresIn: '7d'
+      expiresIn: rememberMe ? '30d' : '7d'
     });
+
+    // Update last_login timestamp
+    db.prepare("UPDATE users SET last_login = ? WHERE id = ?").run(
+      new Date().toISOString(),
+      user.id
+    );
 
     // Return user without password hash
     const { password_hash, ...safeUser } = user;

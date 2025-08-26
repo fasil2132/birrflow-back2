@@ -109,7 +109,8 @@ export async function checkAndSendAlerts() {
         endDate,
         accounts,
         bills,
-        incomeSources
+        incomeSources,
+        (user as User).id
       );
       
       // Cache forecast
@@ -134,6 +135,7 @@ export async function checkAndSendAlerts() {
         notifications.push({
           type: 'bill',
           message: `You have ${upcomingBills.length} bills due soon: ${billNames}`,
+          messageAm: `${upcomingBills.length} ያልተከፈሉ አና ቀናቸዉ የደረሰ ሂሳቦች ዓሉዎት፡ ${billNames}`,
           data: JSON.stringify({ billIds: upcomingBills.map(b => (b as Bill).id) })
         });
       }
@@ -142,6 +144,7 @@ export async function checkAndSendAlerts() {
         notifications.push({
           type: 'balance',
           message: `Low balance predicted: ETB ${minBalance.toFixed(2)} in the next 7 days`,
+          messageAm: `ለሚቀጥለዉ 7 ቀናት ዝቅተኛ የገንዘብ ፍሰት ተንብያለዉ: ETB ${minBalance.toFixed(2)}`,
           data: JSON.stringify({ minBalance })
         });
       }
@@ -149,12 +152,12 @@ export async function checkAndSendAlerts() {
       // Save notifications to DB
       if (notifications.length > 0) {
         const insert = db.prepare(`
-          INSERT INTO notifications (user_id, type, message, data)
-          VALUES (?, ?, ?, ?)
+          INSERT INTO notifications (user_id, type, message, messageAm, data)
+          VALUES (?, ?, ?, ?, ?)
         `);
         
         for (const notif of notifications) {
-          insert.run((user as User).id, notif.type, notif.message, notif.data);
+          insert.run((user as User).id, notif.type, notif.message, notif.messageAm, notif.data);
           console.log(`[Notification] Created notification for user ${(user as User).id}: ${notif.message}`);
         }
       }
